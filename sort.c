@@ -3,6 +3,11 @@
 #include <sys/time.h>
 #include <pthread.h>
 #include <unistd.h>
+#include <string.h>
+
+void set_intervalos(unsigned int *vetor, unsigned int tam, unsigned int ntasks, unsigned int nthreads, int* inicio_intervalos, int* num_por_intervalo);
+
+int informa_intervalo(unsigned int num, unsigned int intervalo_min, unsigned int resto);
 
 // Funcao de ordenacao fornecida. Não pode alterar.
 void bubble_sort(int *v, int tam){
