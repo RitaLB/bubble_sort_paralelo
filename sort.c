@@ -61,6 +61,7 @@ int sort_paralelo(unsigned int *vetor, unsigned int tam, unsigned int ntasks, un
 
     // Dividir intervalos
     // Calcular posição inicial de cada intervalo
+    //printf("\n!!!!sort paralelo \n");
     int* inicio_intervalos =  calloc(ntasks, sizeof(int));
     int* num_por_intervalo =  calloc(ntasks, sizeof(int)); // Inicializa todas as posições com 0
 
@@ -74,9 +75,11 @@ int sort_paralelo(unsigned int *vetor, unsigned int tam, unsigned int ntasks, un
 }
 
 void set_intervalos(unsigned int *vetor, unsigned int tam, unsigned int ntasks, unsigned int nthreads, int* inicio_intervalos, int* num_por_intervalo){
+    //printf("\n!!!!set intervaloo \n");
     // Calculo do intervalo da thread:
     int intervalo_min = tam/ntasks;  
     int resto = tam % ntasks; 
+    //printf("\n !!!!!!!teste \n");
     // Numero de itens por thread : min_num_t + (i < rest ? 1 : 0)
 
 
@@ -84,15 +87,18 @@ void set_intervalos(unsigned int *vetor, unsigned int tam, unsigned int ntasks, 
     // Dúvida: Tô usando int ao invés de  unsigned int. Tem problema?
 
     for (int i =0; i<tam; i++){
+        //printf("\n i %i\n ", i);
         int intervalo = informa_intervalo(vetor[i], intervalo_min, resto);
+        //printf("\n intervalo = %i\n ", intervalo);
         num_por_intervalo[intervalo]+=1;
     }
-
+    //printf("\n!!!!s 1 for \n");
 
     for (int i = 1; i<ntasks; i++){
         inicio_intervalos[i] = inicio_intervalos[i-1] +num_por_intervalo[i-1];
     }
 
+    //printf("\n!!!!s 2 for \n");
     // Cópia para modificação
     int* pos_intervalo =  malloc(ntasks* sizeof(int));
     memcpy(pos_intervalo, inicio_intervalos, ntasks * sizeof(int));
@@ -100,13 +106,13 @@ void set_intervalos(unsigned int *vetor, unsigned int tam, unsigned int ntasks, 
     // Separar numeros intervalos
 
     // Cópia para modificação
-    int* copia_vetor =  malloc(ntasks* sizeof(int));
-    memcpy(copia_vetor, vetor, ntasks * sizeof(int)); // POr ter q fazer essa cópia, realmente vale a pena a abordagem?
+    int* copia_vetor =  malloc(tam* sizeof(int));
+    memcpy(copia_vetor, vetor, tam * sizeof(int)); // POr ter q fazer essa cópia, realmente vale a pena a abordagem?
 
     for (int i = 0; i< tam; i++){
         int intervalo = informa_intervalo(copia_vetor[i], intervalo_min, resto);
         int posicao = pos_intervalo[intervalo];
-        vetor[posicao] = copia_vetor[posicao];
+        vetor[posicao] = copia_vetor[i];
         pos_intervalo[intervalo] +=1;
 
     }
@@ -118,13 +124,14 @@ void set_intervalos(unsigned int *vetor, unsigned int tam, unsigned int ntasks, 
 int informa_intervalo( unsigned int num,  unsigned int intervalo_min,  unsigned int resto ){
     int fronteira = ((intervalo_min +1) * resto);
     int intervalo;
+    //printf("\n num = %i, resto = %i, intervalo_min = %i\n ", num, resto, intervalo_min);
 
-    if (num < fronteira){
-        intervalo = (num - resto)/ intervalo_min;
-    }
-    else {
+    if (num < fronteira) {
         intervalo = num/ (intervalo_min + 1);
+    } else {
+        intervalo = (num - resto) / intervalo_min;
     }
+
 
     return intervalo;
 }  
