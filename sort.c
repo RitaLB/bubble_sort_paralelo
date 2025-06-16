@@ -10,7 +10,7 @@ void set_intervalos(unsigned int *vetor, unsigned int tam, unsigned int ntasks, 
 int informa_intervalo(unsigned int num, unsigned int intervalo_min, unsigned int resto);
 
 // Funcao de ordenacao fornecida. Não pode alterar.
-void bubble_sort(int *v, int tam){
+void bubble_sort(unsigned int *v, int tam){
     int i, j, temp, trocou;
 
     for(j = 0; j < tam - 1; j++){
@@ -68,6 +68,8 @@ int sort_paralelo(unsigned int *vetor, unsigned int tam, unsigned int ntasks, un
     set_intervalos(vetor, tam, ntasks, nthreads, inicio_intervalos, num_por_intervalo);
 
     // Ao passar o vetor para a função de ordenar, na thread, passar int *v com *v apontando para *v na podeição de inicio do intervalo, e int tam com o tamanho do intervalo
+    // Exemplo: ordenar o segundo intervalo (índice 1)
+    bubble_sort(&vetor[inicio_intervalos[1]], num_por_intervalo[1]);
 
     free(inicio_intervalos);
     free(num_por_intervalo);
@@ -93,10 +95,28 @@ void set_intervalos(unsigned int *vetor, unsigned int tam, unsigned int ntasks, 
         num_por_intervalo[intervalo]+=1;
     }
     //printf("\n!!!!s 1 for \n");
+    /*
+    printf("\nmun por intervalos =");
+    for (int i = 0; i < ntasks; i++) {
+        printf("%d", num_por_intervalo[i]);
+        if (i < ntasks - 1) printf(", ");
+        else printf("\n");
+    }
+    */
 
     for (int i = 1; i<ntasks; i++){
         inicio_intervalos[i] = inicio_intervalos[i-1] +num_por_intervalo[i-1];
     }
+
+    //printf("\ninicio_intervalos = ");
+    /*
+    for (int i = 0; i < ntasks; i++) {
+        printf("%d", inicio_intervalos[i]);
+        if (i < ntasks - 1) printf(", ");
+        else printf("\n");
+    }
+    */
+
 
     //printf("\n!!!!s 2 for \n");
     // Cópia para modificação
@@ -112,6 +132,8 @@ void set_intervalos(unsigned int *vetor, unsigned int tam, unsigned int ntasks, 
     for (int i = 0; i< tam; i++){
         int intervalo = informa_intervalo(copia_vetor[i], intervalo_min, resto);
         int posicao = pos_intervalo[intervalo];
+        //printf("\n numero: %d , intervalo: %d, posição: %d\n", copia_vetor[i], intervalo, posicao);
+
         vetor[posicao] = copia_vetor[i];
         pos_intervalo[intervalo] +=1;
 
