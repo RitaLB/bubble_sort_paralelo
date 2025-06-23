@@ -4,10 +4,33 @@
 #include <pthread.h>
 #include <unistd.h>
 #include <string.h>
+#include <sys/types.h>
+
+void bubble_sort(unsigned int *v, int tam);
+
+void imprime_vet(unsigned int *v, int tam);
+
+int le_vet(char *nome_arquivo, unsigned int *v, int tam);
+
+int sort_paralelo(unsigned int *vetor, unsigned int tam, unsigned int ntasks, unsigned int nthreads);
 
 void set_intervalos(unsigned int *vetor, unsigned int tam, unsigned int ntasks, unsigned int nthreads, int* inicio_intervalos, int* num_por_intervalo);
 
 int informa_intervalo(unsigned int num, unsigned int intervalo_min, unsigned int resto);
+
+typedef struct {
+    unsigned int* address;
+    int length;
+} TaskData;
+
+typedef struct {
+    int thread_id;
+    TaskData *tasks;    
+} ThreadArg;
+
+pthread_mutex_t tasks_mutex;
+int task_index = 0;
+int total_tasks = 0;
 
 // Funcao de ordenacao fornecida. Não pode alterar.
 void bubble_sort(unsigned int *v, int tam){
@@ -25,6 +48,29 @@ void bubble_sort(unsigned int *v, int tam){
         }
         if(!trocou) break;
     }
+}
+
+void *thread_bubble_sort(void *arg) {
+    ThreadArg *thread_data = (ThreadArg *)arg;
+    int id = thread_data->thread_id;
+    TaskData *tasks = thread_data->tasks;
+
+    while (1) {
+        pthread_mutex_lock(&tasks_mutex);
+        int aux = task_index++;
+        pthread_mutex_unlock(&tasks_mutex);
+
+        if (aux >= total_tasks)
+            break;
+
+        if (tasks[aux].length < 1)
+            break;
+
+        printf("Thread %d processando tarefa %d\n", id, aux);
+        bubble_sort(tasks[aux].address, tasks[aux].length);
+    }
+
+    return NULL;
 }
 
 // Funcao para imprimir um vetor. Não pode alterar.
@@ -55,89 +101,78 @@ int le_vet(char *nome_arquivo, unsigned int *v, int tam) {
     return 1;
 }
 
-// Funcao principal de ordenacao. Deve ser implementada com base nas informacoes fornecidas no enunciado do trabalho.
-// Os numeros ordenados deverao ser armazenanos no proprio "vetor".
 int sort_paralelo(unsigned int *vetor, unsigned int tam, unsigned int ntasks, unsigned int nthreads) {
-
-    // Dividir intervalos
-    // Calcular posição inicial de cada intervalo
-    //printf("\n!!!!sort paralelo \n");
-    int* inicio_intervalos =  calloc(ntasks, sizeof(int));
-    int* num_por_intervalo =  calloc(ntasks, sizeof(int)); // Inicializa todas as posições com 0
+    int* inicio_intervalos = calloc(ntasks, sizeof(int));
+    int* num_por_intervalo = calloc(ntasks, sizeof(int)); 
 
     set_intervalos(vetor, tam, ntasks, nthreads, inicio_intervalos, num_por_intervalo);
 
-    // Ao passar o vetor para a função de ordenar, na thread, passar int *v com *v apontando para *v na podeição de inicio do intervalo, e int tam com o tamanho do intervalo
-    // Exemplo: ordenar o segundo intervalo (índice 1)
-    bubble_sort(&vetor[inicio_intervalos[1]], num_por_intervalo[1]);
+    pthread_t threads[nthreads];
+    TaskData *tasks = malloc(ntasks * sizeof(TaskData));
+    ThreadArg *thread_args = malloc(nthreads * sizeof(ThreadArg));
+
+    pthread_mutex_init(&tasks_mutex, NULL);
+    task_index = 0;
+    total_tasks = ntasks;
+
+    for (int i = 0; i < ntasks; i++) {
+        tasks[i].address = &vetor[inicio_intervalos[i]];
+        tasks[i].length = num_por_intervalo[i];
+    }
+
+    for (int i = 0; i < nthreads; i++) {
+        thread_args[i].thread_id = i;
+        thread_args[i].tasks = tasks;
+
+        pthread_create(&threads[i], NULL, thread_bubble_sort, &thread_args[i]);
+    }
+
+    for (int i = 0; i < nthreads; i++) {
+        pthread_join(threads[i], NULL);
+    }
 
     free(inicio_intervalos);
     free(num_por_intervalo);
+    free(tasks);
+    free(thread_args);
+    pthread_mutex_destroy(&tasks_mutex);
+
     return 1;
 }
 
 void set_intervalos(unsigned int *vetor, unsigned int tam, unsigned int ntasks, unsigned int nthreads, int* inicio_intervalos, int* num_por_intervalo){
-    //printf("\n!!!!set intervaloo \n");
     // Calculo do intervalo da thread:
     int intervalo_min = tam/ntasks;  
     int resto = tam % ntasks; 
-    //printf("\n !!!!!!!teste \n");
     // Numero de itens por thread : min_num_t + (i < rest ? 1 : 0)
-
-
-    // calcular número de valores em cada intervalo
-    // Dúvida: Tô usando int ao invés de  unsigned int. Tem problema?
-
+    
+    // 2) Calcular número de valores em cada intervalo:
     for (int i =0; i<tam; i++){
-        //printf("\n i %i\n ", i);
         int intervalo = informa_intervalo(vetor[i], intervalo_min, resto);
-        //printf("\n intervalo = %i\n ", intervalo);
         num_por_intervalo[intervalo]+=1;
     }
-    //printf("\n!!!!s 1 for \n");
-    /*
-    printf("\nmun por intervalos =");
-    for (int i = 0; i < ntasks; i++) {
-        printf("%d", num_por_intervalo[i]);
-        if (i < ntasks - 1) printf(", ");
-        else printf("\n");
-    }
-    */
 
+    // 3) Descobir início de cada intervalo, baseado no número de ítens em cada intervalo descoberto em 2):
     for (int i = 1; i<ntasks; i++){
-        inicio_intervalos[i] = inicio_intervalos[i-1] +num_por_intervalo[i-1];
+        inicio_intervalos[i] = inicio_intervalos[i-1] + num_por_intervalo[i-1];
     }
 
-    //printf("\ninicio_intervalos = ");
-    /*
-    for (int i = 0; i < ntasks; i++) {
-        printf("%d", inicio_intervalos[i]);
-        if (i < ntasks - 1) printf(", ");
-        else printf("\n");
-    }
-    */
-
-
-    //printf("\n!!!!s 2 for \n");
-    // Cópia para modificação
+    // 4.1) Faz cópia de vetor inicio_intervalos
     int* pos_intervalo =  malloc(ntasks* sizeof(int));
     memcpy(pos_intervalo, inicio_intervalos, ntasks * sizeof(int));
 
-    // Separar numeros intervalos
-
-    // Cópia para modificação
+    // 4.2) Faz cópia de vetor principal
     int* copia_vetor =  malloc(tam* sizeof(int));
-    memcpy(copia_vetor, vetor, tam * sizeof(int)); // POr ter q fazer essa cópia, realmente vale a pena a abordagem?
+    memcpy(copia_vetor, vetor, tam * sizeof(int)); // Por ter q fazer essa cópia, realmente vale a pena a abordagem?
 
     for (int i = 0; i< tam; i++){
         int intervalo = informa_intervalo(copia_vetor[i], intervalo_min, resto);
         int posicao = pos_intervalo[intervalo];
-        //printf("\n numero: %d , intervalo: %d, posição: %d\n", copia_vetor[i], intervalo, posicao);
 
         vetor[posicao] = copia_vetor[i];
         pos_intervalo[intervalo] +=1;
-
     }
+
     free(copia_vetor);
     free(pos_intervalo);
 }
@@ -146,7 +181,6 @@ void set_intervalos(unsigned int *vetor, unsigned int tam, unsigned int ntasks, 
 int informa_intervalo( unsigned int num,  unsigned int intervalo_min,  unsigned int resto ){
     int fronteira = ((intervalo_min +1) * resto);
     int intervalo;
-    //printf("\n num = %i, resto = %i, intervalo_min = %i\n ", num, resto, intervalo_min);
 
     if (num < fronteira) {
         intervalo = num/ (intervalo_min + 1);
@@ -154,10 +188,8 @@ int informa_intervalo( unsigned int num,  unsigned int intervalo_min,  unsigned 
         intervalo = (num - resto) / intervalo_min;
     }
 
-
     return intervalo;
 }  
-
 
 // Funcao principal do programa. Não pode alterar.
 int main(int argc, char **argv) {
