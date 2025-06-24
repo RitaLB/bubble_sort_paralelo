@@ -104,12 +104,27 @@ int le_vet(char *nome_arquivo, unsigned int *v, int tam) {
 int sort_paralelo(unsigned int *vetor, unsigned int tam, unsigned int ntasks, unsigned int nthreads) {
     int* inicio_intervalos = calloc(ntasks, sizeof(int));
     int* num_por_intervalo = calloc(ntasks, sizeof(int)); 
+    if (inicio_intervalos == NULL || num_por_intervalo == NULL) {
+        fprintf(stderr, "Erro: falha ao alocar memória para intervalos.\n");
+        free(inicio_intervalos);
+        free(num_por_intervalo);
+        return 0;
+    }
 
     set_intervalos(vetor, tam, ntasks, nthreads, inicio_intervalos, num_por_intervalo);
 
     pthread_t threads[nthreads];
     TaskData *tasks = malloc(ntasks * sizeof(TaskData));
     ThreadArg *thread_args = malloc(nthreads * sizeof(ThreadArg));
+
+    if (tasks == NULL || thread_args == NULL) {
+        fprintf(stderr, "Erro: falha ao alocar memória para tarefas ou argumentos das threads.\n");
+        free(inicio_intervalos);
+        free(num_por_intervalo);
+        free(tasks);
+        free(thread_args);
+        return 0;
+    }
 
     pthread_mutex_init(&tasks_mutex, NULL);
     task_index = 0;
@@ -141,54 +156,58 @@ int sort_paralelo(unsigned int *vetor, unsigned int tam, unsigned int ntasks, un
 }
 
 void set_intervalos(unsigned int *vetor, unsigned int tam, unsigned int ntasks, unsigned int nthreads, int* inicio_intervalos, int* num_por_intervalo){
-    // Calculo do intervalo da thread:
+    // 1) Calculo do intervalo da thread:
     int intervalo_min = tam/ntasks;  
     int resto = tam % ntasks; 
     // Numero de itens por thread : min_num_t + (i < rest ? 1 : 0)
-    
+
     // 2) Calcular número de valores em cada intervalo:
-    for (int i =0; i<tam; i++){
+    for (int i = 0; i < tam; i++) {
         int intervalo = informa_intervalo(vetor[i], intervalo_min, resto);
         num_por_intervalo[intervalo]+=1;
     }
 
     // 3) Descobir início de cada intervalo, baseado no número de ítens em cada intervalo descoberto em 2):
-    for (int i = 1; i<ntasks; i++){
-        inicio_intervalos[i] = inicio_intervalos[i-1] + num_por_intervalo[i-1];
+    for (int i = 1; i < ntasks; i++) {
+        inicio_intervalos[i] = inicio_intervalos[i - 1] + num_por_intervalo[i - 1];
     }
 
-    // 4.1) Faz cópia de vetor inicio_intervalos
-    int* pos_intervalo =  malloc(ntasks* sizeof(int));
+    // 4) Rearranjo usando vetor temporário
+    unsigned int* rearranjado = malloc(tam * sizeof(unsigned int));
+    int* pos_intervalo = malloc(ntasks * sizeof(int));
+    if (rearranjado == NULL || pos_intervalo == NULL) {
+        fprintf(stderr, "Erro: falha ao alocar memória para rearranjo.\n");
+        free(rearranjado);
+        free(pos_intervalo);
+        return;
+    }
+
     memcpy(pos_intervalo, inicio_intervalos, ntasks * sizeof(int));
 
-    // 4.2) Faz cópia de vetor principal
-    int* copia_vetor =  malloc(tam* sizeof(int));
-    memcpy(copia_vetor, vetor, tam * sizeof(int)); // Por ter q fazer essa cópia, realmente vale a pena a abordagem?
-
-    for (int i = 0; i< tam; i++){
-        int intervalo = informa_intervalo(copia_vetor[i], intervalo_min, resto);
-        int posicao = pos_intervalo[intervalo];
-
-        vetor[posicao] = copia_vetor[i];
-        pos_intervalo[intervalo] +=1;
+    for (int i = 0; i < tam; i++) {
+        int intervalo = informa_intervalo(vetor[i], intervalo_min, resto);
+        int posicao = pos_intervalo[intervalo]++;
+        rearranjado[posicao] = vetor[i];
     }
 
-    free(copia_vetor);
+    // Copia de volta para vetor original
+    memcpy(vetor, rearranjado, tam * sizeof(unsigned int));
+
+    // Libera recursos temporários
+    free(rearranjado);
     free(pos_intervalo);
 }
 
 // Função que define qual intervalo determinado número pertence
-int informa_intervalo( unsigned int num,  unsigned int intervalo_min,  unsigned int resto ){
-    int fronteira = ((intervalo_min +1) * resto);
-    int intervalo;
-
-    if (num < fronteira) {
-        intervalo = num/ (intervalo_min + 1);
-    } else {
-        intervalo = (num - resto) / intervalo_min;
+int informa_intervalo(unsigned int num, unsigned int intervalo_min, unsigned int resto) {
+    if (resto == 0) {
+        return num / intervalo_min;
     }
-
-    return intervalo;
+    
+    int fronteira = resto * (intervalo_min + 1);
+    return (num < fronteira) ? 
+           num / (intervalo_min + 1) : 
+           resto + (num - fronteira) / intervalo_min;
 }  
 
 // Funcao principal do programa. Não pode alterar.
