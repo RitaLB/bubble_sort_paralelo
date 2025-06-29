@@ -19,13 +19,10 @@ void set_intervalos(unsigned int *vetor, unsigned int tam, unsigned int ntasks, 
 int informa_intervalo(unsigned int num, unsigned int intervalo_min, unsigned int resto);
 
 typedef struct {
-    unsigned int* address;
-    int length;
-} TaskData;
-
-typedef struct {
     int thread_id;
-    TaskData *tasks;    
+    unsigned int *vetor;
+    int *inicio_intervalos;
+    int* num_por_intervalo;  
 } ThreadArg;
 
 pthread_mutex_t tasks_mutex;
@@ -53,8 +50,15 @@ void bubble_sort(unsigned int *v, int tam){
 void *thread_bubble_sort(void *arg) {
     ThreadArg *thread_data = (ThreadArg *)arg;
     int id = thread_data->thread_id;
-    TaskData *tasks = thread_data->tasks;
+    unsigned int *vetor = thread_data->vetor;
+    int *inicio_intervalos = thread_data->inicio_intervalos;
+    int *num_por_intervalo = thread_data->num_por_intervalo;
 
+    // Estratégia adotada: as tarefas são atribuídas dinamicamente às threads.
+    // Cada thread busca a próxima tarefa disponível em ordem crescente (task 0, depois 1, etc.).
+    // Assim que uma thread termina de processar uma tarefa, ela pega a próxima disponível,
+    // garantindo melhor balanceamento de carga entre as threads.
+    
     while (1) {
         pthread_mutex_lock(&tasks_mutex);
         int aux = task_index++;
@@ -63,11 +67,12 @@ void *thread_bubble_sort(void *arg) {
         if (aux >= total_tasks)
             break;
 
-        if (tasks[aux].length < 1)
-            break;
+        if (num_por_intervalo[aux] < 1)
+            continue;
 
         printf("Thread %d processando tarefa %d\n", id, aux);
-        bubble_sort(tasks[aux].address, tasks[aux].length);
+        int endereco = inicio_intervalos[aux];
+        bubble_sort(&vetor[endereco],num_por_intervalo[aux]);
     }
 
     return NULL;
@@ -114,33 +119,22 @@ int sort_paralelo(unsigned int *vetor, unsigned int tam, unsigned int ntasks, un
     set_intervalos(vetor, tam, ntasks, nthreads, inicio_intervalos, num_por_intervalo);
 
     pthread_t threads[nthreads];
-    TaskData *tasks = malloc(ntasks * sizeof(TaskData));
     ThreadArg *thread_args = malloc(nthreads * sizeof(ThreadArg));
-
-    if (tasks == NULL || thread_args == NULL) {
-        fprintf(stderr, "Erro: falha ao alocar memória para tarefas ou argumentos das threads.\n");
-        free(inicio_intervalos);
-        free(num_por_intervalo);
-        free(tasks);
-        free(thread_args);
-        return 0;
-    }
 
     pthread_mutex_init(&tasks_mutex, NULL);
     task_index = 0;
     total_tasks = ntasks;
 
-    for (int i = 0; i < ntasks; i++) {
-        tasks[i].address = &vetor[inicio_intervalos[i]];
-        tasks[i].length = num_por_intervalo[i];
-    }
-
     for (int i = 0; i < nthreads; i++) {
         thread_args[i].thread_id = i;
-        thread_args[i].tasks = tasks;
+        thread_args[i].inicio_intervalos = inicio_intervalos;
+        thread_args[i].num_por_intervalo = num_por_intervalo;
+        thread_args[i].vetor = vetor;
+
 
         pthread_create(&threads[i], NULL, thread_bubble_sort, &thread_args[i]);
     }
+
 
     for (int i = 0; i < nthreads; i++) {
         pthread_join(threads[i], NULL);
@@ -148,7 +142,7 @@ int sort_paralelo(unsigned int *vetor, unsigned int tam, unsigned int ntasks, un
 
     free(inicio_intervalos);
     free(num_por_intervalo);
-    free(tasks);
+    //free(tasks);
     free(thread_args);
     pthread_mutex_destroy(&tasks_mutex);
 
@@ -156,7 +150,8 @@ int sort_paralelo(unsigned int *vetor, unsigned int tam, unsigned int ntasks, un
 }
 
 void set_intervalos(unsigned int *vetor, unsigned int tam, unsigned int ntasks, unsigned int nthreads, int* inicio_intervalos, int* num_por_intervalo){
-    // 1) Calculo do intervalo da thread:
+    if(tam < ntasks) ntasks = tam;
+    // 1) Cálculo do tamanho base de cada intervalo de valor
     int intervalo_min = tam/ntasks;  
     int resto = tam % ntasks; 
     // Numero de itens por thread : min_num_t + (i < rest ? 1 : 0)
